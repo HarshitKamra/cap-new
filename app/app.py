@@ -91,22 +91,40 @@ with col2:
 
 
 def load_image(file) -> np.ndarray:
-    data = file.read()
+    if file is None:
+        raise ValueError("No file uploaded.")
+
+    try:
+        file.seek(0)
+        data = file.read()
+    except Exception:
+        data = getattr(file, "getvalue", lambda: b"")()
+
+    if not data:
+        raise ValueError("Uploaded file is empty.")
+
     arr = np.frombuffer(data, np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None or img.size == 0:
+        raise ValueError("Uploaded file could not be decoded as an image. Please upload a valid JPG, PNG, or WEBP poster.")
     return img
 
 
 if uploaded is not None:
-    image = load_image(uploaded)
-    preview_rgb, _ = draw_aoi_boxes(image, [])
-    preview_placeholder.image(preview_rgb, use_column_width=True)
+    try:
+        image = load_image(uploaded)
+        preview_rgb, _ = draw_aoi_boxes(image, [])
+        preview_placeholder.image(preview_rgb, use_container_width=True)
+    except Exception as exc:
+        st.error(f"Image load failed: {exc}")
 
 if run:
     if uploaded is None:
         st.error("Upload an image first.")
     else:
         img = load_image(uploaded)
+        records: list = []
+        source = "not-run"
         try:
             inference_requests.inc()
             with timeit(processing_seconds):
@@ -117,13 +135,13 @@ if run:
         else:
             preview_rgb, legacy = draw_aoi_boxes(img, records)
             st.success(f"Detected {len(records)} AOIs (source={source})")
-            preview_placeholder.image(preview_rgb, use_column_width=True)
+            preview_placeholder.image(preview_rgb, use_container_width=True)
             st.json([r.to_dict() for r in records])
 
-        # store records in session state for later gaze analysis
-        st.session_state["last_records"] = records
-        st.session_state["last_image_shape"] = img.shape
-        logger.info("Detection produced %d AOIs (source=%s)", len(records), source)
+            # store records in session state for later gaze analysis
+            st.session_state["last_records"] = records
+            st.session_state["last_image_shape"] = img.shape
+            logger.info("Detection produced %d AOIs (source=%s)", len(records), source)
 
 if analyze_gaze:
     if uploaded is None:
@@ -198,7 +216,7 @@ if analyze_gaze:
                     overlay = cv2.addWeighted(cv2.cvtColor(preview_rgb, cv2.COLOR_RGB2BGR), 0.7, heat_color, 0.3, 0)
                     overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
                     st.subheader("Gaze Heatmap Overlay")
-                    st.image(overlay_rgb, use_column_width=True)
+                    st.image(overlay_rgb, use_container_width=True)
                     # allow download
                     import io, base64
                     _, buf = cv2.imencode('.png', cv2.cvtColor(overlay_rgb, cv2.COLOR_RGB2BGR))

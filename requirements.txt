@@ -9,3 +9,4 @@ prometheus-client
 playwright
 pytest-playwright
 reportlab
+ultralytics

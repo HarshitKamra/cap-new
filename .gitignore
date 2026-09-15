@@ -35,3 +35,5 @@ webgazer_session*.html
 *.log
 *.tmp
 *.bak
+.run_server_static/
+server.log

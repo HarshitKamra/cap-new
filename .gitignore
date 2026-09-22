@@ -8,6 +8,14 @@ __pycache__/
 venv/
 env/
 ENV/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Secrets — never commit API keys
+.env
+.env.local
+.env.*.local
 
 # Local editor settings
 .vscode/
@@ -27,9 +35,11 @@ raw_data/
 exports/
 reports/
 outputs/
+runs/
 webgazer_session*.html
 *.tsv
 *.csv
+!data/samples/sample_gaze.csv
 
 # Logs and temporary files
 *.log

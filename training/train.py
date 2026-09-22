@@ -1,46 +1,22 @@
-"""Training wrapper for YOLOv8 using the ultralytics package.
-
-This is a convenience script to start training using a `data.yaml` file such
-as `Capstone.yolov8/data.yaml`. It requires `ultralytics` to be installed.
-"""
-from __future__ import annotations
-
-import argparse
-from pathlib import Path
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Train YOLOv8 on a dataset.")
-    parser.add_argument("--data", help="Path to data.yaml", required=True)
-    parser.add_argument("--model", help="Backbone model (e.g. yolov8n.pt)", default="yolov8n.pt")
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch", type=int, default=8)
-    parser.add_argument("--imgsz", type=int, default=640)
-    parser.add_argument("--project", default="runs/train")
-    parser.add_argument("--name", default="capstone")
-    args = parser.parse_args()
-
-    try:
-        from ultralytics import YOLO
-    except Exception:
-        print("ultralytics is not installed. Install with: pip install ultralytics")
-        return
-
-    model = YOLO(args.model)
-    model.train(data=str(Path(args.data)), epochs=args.epochs, batch=args.batch, imgsz=args.imgsz, project=args.project, name=args.name)
-
-
-if __name__ == "__main__":
-    main()
 """Train YOLOv8 poster element detector on Capstone.yolov8 dataset."""
 
 from __future__ import annotations
 
 import argparse
 import shutil
+import sys
 from pathlib import Path
 
-from config.settings import DATASET_DIR, DATASET_YAML, DEFAULT_MODEL_WEIGHTS, PROJECT_ROOT
+# Run directly as `python training/train.py`, so the project root is not on
+# sys.path by default.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from config.settings import (  # noqa: E402
+    DATASET_DIR,
+    DATASET_YAML,
+    DEFAULT_MODEL_WEIGHTS,
+    PROJECT_ROOT,
+)
 
 
 def parse_args():
@@ -70,6 +46,30 @@ def parse_args():
     return parser.parse_args()
 
 
+def write_resolved_dataset_yaml(data_yaml: Path, output_dir: Path) -> Path:
+    """Write a copy of data.yaml with an absolute `path`, and return its location.
+
+    The committed data.yaml uses `path: .` so the dataset stays portable, but
+    Ultralytics resolves a relative `path` against the working directory rather
+    than against the yaml's own folder — which sends it looking for
+    `<cwd>/valid/images`. Rewriting `path` to the real dataset root before
+    training makes it work from any cwd without editing the tracked file.
+    """
+    import yaml
+
+    with open(data_yaml, encoding="utf-8") as file:
+        config = yaml.safe_load(file) or {}
+
+    config["path"] = str(data_yaml.resolve().parent)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    resolved_path = output_dir / "data.resolved.yaml"
+    with open(resolved_path, "w", encoding="utf-8") as file:
+        yaml.safe_dump(config, file, sort_keys=False)
+
+    return resolved_path
+
+
 def main() -> None:
     args = parse_args()
 
@@ -88,9 +88,11 @@ def main() -> None:
     except ImportError as exc:
         raise ImportError("Install ultralytics: pip install ultralytics") from exc
 
+    resolved_data = write_resolved_dataset_yaml(args.data, args.project)
+
     model = YOLO(args.model)
     results = model.train(
-        data=str(args.data.resolve()),
+        data=str(resolved_data),
         epochs=args.epochs,
         imgsz=args.imgsz,
         batch=args.batch,

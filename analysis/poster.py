@@ -1,38 +1,3 @@
-"""Poster utilities: thin wrappers around existing `aoi_visualizer` helpers.
-
-This module provides a stable import surface for poster-related functions
-so the web app and analysis modules can depend on a small API rather than
-importing the monolithic `aoi_visualizer.py` directly.
-"""
-from typing import Tuple, List
-
-from aoi_visualizer import (
-    list_available_posters,
-    load_poster,
-    read_image,
-    draw_aoi_boxes,
-)
-
-
-def posters_in_folder(folder_path: str) -> List[str]:
-    return list_available_posters(folder_path)
-
-
-def open_poster(folder_path: str, poster_name: str = None) -> Tuple[str, object]:
-    """Return (poster_name, image_array).
-
-    If `poster_name` is None the interactive selector from `aoi_visualizer`
-    will be used.
-    """
-    return load_poster(folder_path, poster_name)
-
-
-def read_poster_image(path: str):
-    return read_image(path)
-
-
-def draw_boxes(image, label_lines, class_names) -> Tuple[object, List[tuple]]:
-    return draw_aoi_boxes(image, label_lines, class_names)
 """Poster image loading utilities."""
 
 from __future__ import annotations

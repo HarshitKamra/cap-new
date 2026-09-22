@@ -1,15 +1,11 @@
-import tempfile
 from pathlib import Path
 import numpy as np
 
-from config.settings import DEFAULT_MODEL_WEIGHTS
 from analysis.detection import detect_poster_elements
 
 
 def test_end_to_end_detection_monkeypatch(monkeypatch, tmp_path):
-    # ensure a dummy weights file exists to simulate weights being present
-    weights_path = Path(DEFAULT_MODEL_WEIGHTS)
-    weights_path.parent.mkdir(parents=True, exist_ok=True)
+    weights_path = tmp_path / "dummy-best.pt"
     weights_path.write_bytes(b"dummy")
 
     # create a dummy image

@@ -10,3 +10,7 @@ playwright
 pytest-playwright
 reportlab
 ultralytics
+pyyaml
+fastapi
+uvicorn
+python-multipart

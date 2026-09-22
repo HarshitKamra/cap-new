@@ -131,7 +131,22 @@ def parse_yolo_label_lines(
             continue
 
         class_id = int(parts[0])
-        x_center, y_center, box_w, box_h = map(float, parts[1:5])
+        values = [float(value) for value in parts[1:]]
+
+        if len(values) == 4:
+            x_center, y_center, box_w, box_h = values
+        elif len(values) >= 6 and len(values) % 2 == 0:
+            # Polygon/segmentation annotation: collapse it to its bounding box
+            # rather than reading the first four numbers as one, which would
+            # place the box on the first two vertices.
+            xs, ys = values[0::2], values[1::2]
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            x_center, y_center = (x_min + x_max) / 2, (y_min + y_max) / 2
+            box_w, box_h = x_max - x_min, y_max - y_min
+        else:
+            continue
+
         records.append(
             build_aoi_record(
                 class_id=class_id,

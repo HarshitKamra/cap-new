@@ -1,0 +1,4 @@
+timestamp_ms,gaze_x,gaze_y,duration_ms,aoi_hit,poster,face_detected,eyes_detected,iris_tracking_ok
+0,480,320,100,Product,sample_poster,true,true,true
+100,500,340,120,Product,sample_poster,true,true,true
+220,100,100,80,,sample_poster,true,true,true

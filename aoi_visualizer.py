@@ -25,10 +25,14 @@ from analysis.attention import calculate_attention_percentages  # noqa: E402
 from analysis.detection import load_label_lines  # noqa: E402
 from analysis.gaze import GazeAnalyzer  # noqa: E402
 from analysis.poster import list_available_posters, read_image, select_poster  # noqa: E402
-from analysis.scoring import PES_WEIGHTS, calculate_pes  # noqa: E402
+from analysis.scoring import (  # noqa: E402
+    PES_WEIGHTS,
+    calculate_pes,
+)
 from config.settings import (  # noqa: E402
     BACKGROUND_LABEL,
     CLASS_NAMES,
+    CORE_AOI_ORDER,
     DATASET_IMAGE_DIR,
     DATASET_LABEL_DIR,
 )
@@ -763,29 +767,6 @@ def analyze_raw_gaze_file(
     return stats
 
 
-def clamp(value, minimum=0, maximum=100):
-    """Keep a score inside the 0-100 range."""
-    return max(minimum, min(maximum, value))
-
-
-def score_for_ideal_range(value, low, high):
-    """
-    Score an attention percentage against a healthy marketing range.
-    Values inside the range get 100; weak or excessive attention is penalized.
-    """
-    if low <= value <= high:
-        return 100
-
-    if value < low:
-        return clamp((value / low) * 100) if low else 100
-
-    remaining_space = 100 - high
-    if remaining_space <= 0:
-        return 0
-
-    return clamp(100 - ((value - high) / remaining_space) * 100)
-
-
 def get_present_aoi_labels(boxes):
     """Return AOI labels present on the selected poster in a stable order."""
     labels = {box[0] for box in boxes}
@@ -813,175 +794,6 @@ def calculate_attention_percentages(scores, boxes):
     return {
         label: (scores.get(label, 0) / total_attention) * 100
         for label in report_labels
-    }
-
-
-def calculate_balance_score(percentages, boxes):
-    """
-    Reward posters where important AOIs receive some attention while background
-    attention and one-element domination stay low.
-    """
-    labels = get_present_aoi_labels(boxes)
-
-    if not labels:
-        return 0
-
-    meaningful_labels = [
-        label
-        for label in labels
-        if percentages.get(label, 0) >= 5
-    ]
-    coverage_score = (len(meaningful_labels) / len(labels)) * 100
-
-    dominant_attention = max(percentages.get(label, 0) for label in labels)
-    dominance_score = (
-        100
-        if dominant_attention <= 55
-        else clamp(100 - ((dominant_attention - 55) * 2))
-    )
-
-    background_attention = percentages.get(BACKGROUND_LABEL, 0)
-    background_score = clamp(100 - (background_attention * 2))
-
-    return (
-        coverage_score * 0.45
-        + dominance_score * 0.35
-        + background_score * 0.20
-    )
-
-
-def calculate_hierarchy_score(percentages, boxes):
-    """
-    Reward a marketing-friendly visual hierarchy:
-    Product should lead, while Headline and CTA should appear near the top.
-    """
-    labels = get_present_aoi_labels(boxes)
-    ranked_labels = [
-        label
-        for label, _ in sorted(
-            ((label, percentages.get(label, 0)) for label in labels),
-            key=lambda item: item[1],
-            reverse=True,
-        )
-    ]
-
-    if not ranked_labels or max(percentages.get(label, 0) for label in labels) == 0:
-        return 0
-
-    rank_map = {
-        label: rank
-        for rank, label in enumerate(ranked_labels, start=1)
-    }
-
-    score = 0
-
-    product_rank = rank_map.get("Product")
-    if product_rank == 1:
-        score += 35
-    elif product_rank == 2:
-        score += 25
-    elif product_rank == 3:
-        score += 15
-
-    headline_rank = rank_map.get("Headline")
-    if headline_rank and headline_rank <= 3:
-        score += 25
-    elif percentages.get("Headline", 0) > 0:
-        score += 10
-
-    cta_rank = rank_map.get("CTA")
-    if cta_rank and cta_rank <= 3:
-        score += 25
-    elif percentages.get("CTA", 0) > 0:
-        score += 10
-
-    background_attention = percentages.get(BACKGROUND_LABEL, 0)
-    if background_attention <= 10:
-        score += 15
-    elif background_attention <= 20:
-        score += 8
-
-    return clamp(score)
-
-
-def get_pes_category(score):
-    """Translate a numeric PES into a simple interpretation."""
-    if score >= 80:
-        return "Excellent"
-    if score >= 65:
-        return "Good"
-    if score >= 50:
-        return "Average"
-    return "Needs Improvement"
-
-
-def build_design_insights(percentages, boxes, component_scores):
-    """Generate human-readable poster improvement notes from PES inputs."""
-    labels = set(get_present_aoi_labels(boxes))
-    insights = []
-
-    if "Product" not in labels:
-        insights.append("Product AOI is missing, so the main food item cannot be evaluated.")
-    elif percentages.get("Product", 0) < 25:
-        insights.append("Product attention is low; make the food item larger, clearer, or more central.")
-    elif percentages.get("Product", 0) > 55:
-        insights.append("Product dominates strongly; supporting text or CTA may need more visual weight.")
-    else:
-        insights.append("Product visibility is healthy.")
-
-    if "CTA" not in labels:
-        insights.append("CTA is missing; add a clear action such as order now, visit, or buy.")
-    elif percentages.get("CTA", 0) < 8:
-        insights.append("CTA is being ignored; improve contrast, size, or placement.")
-    else:
-        insights.append("CTA is receiving useful attention.")
-
-    if "Headline" not in labels:
-        insights.append("Headline is missing; add a short message to guide viewer understanding.")
-    elif percentages.get("Headline", 0) < 10:
-        insights.append("Headline engagement is weak; improve readability and position.")
-
-    if percentages.get(BACKGROUND_LABEL, 0) > 25:
-        insights.append("Too much attention is going outside AOIs; reduce clutter or mark important regions.")
-
-    if component_scores["Attention Balance"] < 50:
-        insights.append("Attention is concentrated on too few elements; improve balance across key AOIs.")
-
-    if component_scores["Visual Hierarchy"] < 60:
-        insights.append("Visual hierarchy is weak; Product, Headline, and CTA should guide the viewer in order.")
-
-    return insights
-
-
-def calculate_pes(percentages, boxes):
-    """Calculate Poster Effectiveness Score from AOI attention analytics."""
-    component_scores = {
-        "Product Attention": score_for_ideal_range(
-            percentages.get("Product", 0),
-            *IDEAL_ATTENTION_RANGES["Product"],
-        ),
-        "CTA Visibility": score_for_ideal_range(
-            percentages.get("CTA", 0),
-            *IDEAL_ATTENTION_RANGES["CTA"],
-        ),
-        "Headline Engagement": score_for_ideal_range(
-            percentages.get("Headline", 0),
-            *IDEAL_ATTENTION_RANGES["Headline"],
-        ),
-        "Attention Balance": calculate_balance_score(percentages, boxes),
-        "Visual Hierarchy": calculate_hierarchy_score(percentages, boxes),
-    }
-
-    score = sum(
-        component_scores[name] * weight / 100
-        for name, weight in PES_WEIGHTS.items()
-    )
-
-    return {
-        "score": clamp(score),
-        "category": get_pes_category(score),
-        "components": component_scores,
-        "insights": build_design_insights(percentages, boxes, component_scores),
     }
 
 

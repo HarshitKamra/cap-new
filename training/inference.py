@@ -1,93 +1,23 @@
-"""Inference CLI for running YOLOv8 detection on posters.
-
-This script is a thin wrapper around `models.detector.PosterDetector` and the
-analysis conversion helpers. It writes per-image JSON detections and optional
-visualization images to an output folder.
-"""
-from __future__ import annotations
-
-import argparse
-import json
-from pathlib import Path
-from typing import List
-
-import cv2
-
-from models.detector import PosterDetector, ModelNotFoundError
-from analysis.detection import detections_to_aoi_records
-from analysis.aoi import draw_aoi_boxes
-
-
-def run_inference(source: Path, weights: Path | None, out_dir: Path, conf: float):
-    detector = PosterDetector(weights_path=weights)
-
-    if not detector.is_available:
-        raise ModelNotFoundError("No model weights found. Set --weights to a .pt checkpoint.")
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    files: List[Path] = []
-    if source.is_dir():
-        for ext in ("*.jpg", "*.jpeg", "*.png", "*.webp"):
-            files.extend(sorted(source.glob(ext)))
-    else:
-        files = [source]
-
-    for img_path in files:
-        print(f"Processing {img_path}")
-        image = cv2.imread(str(img_path))
-        if image is None:
-            print(f"Unable to read image: {img_path}")
-            continue
-
-        detections = detector.predict(img_path, conf=conf)
-        records = detections_to_aoi_records(detections, image.shape)
-
-        # Save JSON detections
-        out_json = out_dir / f"{img_path.stem}.detections.json"
-        with open(out_json, "w", encoding="utf-8") as f:
-            json.dump(detections, f, indent=2)
-
-        # Save visualization
-        preview, _boxes = draw_aoi_boxes(image, records)
-        out_img = out_dir / f"{img_path.stem}.vis.png"
-        cv2.imwrite(str(out_img), cv2.cvtColor(preview, cv2.COLOR_RGB2BGR))
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Run YOLO inference on posters.")
-    parser.add_argument("--weights", help="Path to .pt weights file", default=None)
-    parser.add_argument("--source", help="Image file or folder", required=True)
-    parser.add_argument("--out", help="Output directory", default="inference_out")
-    parser.add_argument("--conf", type=float, default=0.25)
-
-    args = parser.parse_args()
-    source = Path(args.source)
-    out_dir = Path(args.out)
-
-    try:
-        run_inference(source, Path(args.weights) if args.weights else None, out_dir, args.conf)
-    except ModelNotFoundError as exc:
-        print("Model error:", exc)
-
-
-if __name__ == "__main__":
-    main()
 """Run YOLO inference on one image or a directory and save predictions."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import cv2
 
-from analysis.aoi import draw_aoi_boxes
-from analysis.detection import detections_to_aoi_records
-from analysis.poster import read_image
-from config.settings import DEFAULT_MODEL_WEIGHTS
-from models.detector import ModelNotFoundError, PosterDetector
+# Run directly as `python training/inference.py`, so the project root is not on
+# sys.path by default.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from analysis.aoi import draw_aoi_boxes  # noqa: E402
+from analysis.detection import detections_to_aoi_records  # noqa: E402
+from analysis.poster import read_image  # noqa: E402
+from config.settings import DEFAULT_MODEL_WEIGHTS  # noqa: E402
+from models.detector import ModelNotFoundError, PosterDetector  # noqa: E402
 
 
 def parse_args():
